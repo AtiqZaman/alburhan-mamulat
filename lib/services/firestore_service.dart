@@ -1,148 +1,265 @@
-// ============================================================
-// FILE: lib/services/firestore_service.dart
-// COPY THIS CODE INTO: lib/services/firestore_service.dart
-// ============================================================
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/task_model.dart';
-import '../models/level_model.dart';
-import '../models/user_model.dart';
-import '../models/daily_update_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Stream<List<UserModel>> getMurabis() {
+  // Add new user (Murabi, Salik, or Admin)
+  Future<void> addUser({
+    required String uid,
+    required String name,
+    required String email,
+    required String phone,
+    required String role, // 'admin', 'murabi', 'salik'
+    String? assignedMurabi,
+    String? bio,
+    int? level,
+    int? currentDay,
+  }) async {
+    try {
+      await _firestore.collection('users').doc(uid).set({
+        'uid': uid,
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'role': role,
+        'assignedMurabi': assignedMurabi ?? '',
+        'bio': bio ?? '',
+        'level': level ?? 1,
+        'currentDay': currentDay ?? 1,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error adding user: $e');
+      rethrow;
+    }
+  }
+
+  // Get user by UID
+  Future<Map<String, dynamic>?> getUser(String uid) async {
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection('users')
+          .doc(uid)
+          .get();
+      return doc.data() as Map<String, dynamic>?;
+    } catch (e) {
+      print('Error getting user: $e');
+      return null;
+    }
+  }
+
+  // Get all users with specific role
+  Stream<List<Map<String, dynamic>>> getUsersByRole(String role) {
     return _firestore
         .collection('users')
-        .where('role', isEqualTo: 'murabi')
+        .where('role', isEqualTo: role)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => doc.data() as Map<String, dynamic>)
+              .toList(),
+        );
   }
 
-  Stream<List<UserModel>> getAllSalikeen() {
-    return _firestore
-        .collection('users')
-        .where('role', isEqualTo: 'salik')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-            .toList());
+  // Update user
+  Future<void> updateUser(String uid, Map<String, dynamic> data) async {
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        ...data,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error updating user: $e');
+      rethrow;
+    }
   }
 
-  Future<void> addLevel(int levelNumber, String levelNameUrdu) async {
-    await _firestore.collection('levels').add({
-      'levelNumber': levelNumber,
-      'levelNameUrdu': levelNameUrdu,
-      'isActive': true,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+  // Delete user
+  Future<void> deleteUser(String uid) async {
+    try {
+      await _firestore.collection('users').doc(uid).delete();
+    } catch (e) {
+      print('Error deleting user: $e');
+      rethrow;
+    }
   }
 
-  Stream<List<LevelModel>> getLevels() {
-    return _firestore
-        .collection('levels')
-        .orderBy('levelNumber')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => LevelModel.fromMap(doc.data(), doc.id))
-            .toList());
+  // Add task for a level
+  Future<void> addTask({
+    required String levelId,
+    required String taskName,
+    required String description,
+    required String category,
+    bool isCountable = false,
+    int maxCount = 1,
+    int order = 0,
+  }) async {
+    try {
+      await _firestore.collection('tasks').add({
+        'levelId': levelId,
+        'taskName': taskName,
+        'description': description,
+        'category': category,
+        'isCountable': isCountable,
+        'maxCount': maxCount,
+        'order': order,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error adding task: $e');
+      rethrow;
+    }
   }
 
-  Future<void> addTask(TaskModel task) async {
-    await _firestore.collection('tasks').add(task.toMap());
-  }
-
-  Stream<List<TaskModel>> getTasksByLevel(String levelId) {
+  // Get tasks by level
+  Stream<List<Map<String, dynamic>>> getTasksByLevel(String levelId) {
     return _firestore
         .collection('tasks')
         .where('levelId', isEqualTo: levelId)
         .orderBy('order')
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => TaskModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .toList(),
+        );
   }
 
-  Stream<List<UserModel>> getAssignedSalikeen(String murabiId) {
+  // Add level
+  Future<void> addLevel({
+    required String levelName,
+    required int levelNumber,
+    required int daysRequired,
+    String description = '',
+  }) async {
+    try {
+      await _firestore.collection('levels').add({
+        'levelName': levelName,
+        'levelNumber': levelNumber,
+        'daysRequired': daysRequired,
+        'description': description,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error adding level: $e');
+      rethrow;
+    }
+  }
+
+  // Get all levels
+  Stream<List<Map<String, dynamic>>> getAllLevels() {
     return _firestore
-        .collection('users')
-        .where('role', isEqualTo: 'salik')
-        .where('assignedMurabiId', isEqualTo: murabiId)
+        .collection('levels')
+        .orderBy('levelNumber')
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .toList(),
+        );
   }
 
-  Stream<List<DailyUpdateModel>> getSalikUpdates(String salikId, int limit) {
+  // Submit daily update
+  Future<void> submitDailyUpdate({
+    required String salikId,
+    required String salikName,
+    required int currentLevel,
+    required int currentDay,
+    required Map<String, dynamic> tasksCompleted,
+    String notes = '',
+  }) async {
+    try {
+      await _firestore.collection('dailyUpdates').add({
+        'salikId': salikId,
+        'salikName': salikName,
+        'currentLevel': currentLevel,
+        'currentDay': currentDay,
+        'tasksCompleted': tasksCompleted,
+        'notes': notes,
+        'date': FieldValue.serverTimestamp(),
+        'submittedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error submitting daily update: $e');
+      rethrow;
+    }
+  }
+
+  // Get daily updates for a salik
+  Stream<List<Map<String, dynamic>>> getDailyUpdates(
+    String salikId, {
+    int limit = 30,
+  }) {
     return _firestore
         .collection('dailyUpdates')
         .where('salikId', isEqualTo: salikId)
         .orderBy('date', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => DailyUpdateModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .toList(),
+        );
   }
 
-  Future<void> approveLevelProgression(String salikId) async {
-    DocumentSnapshot salikDoc = await _firestore.collection('users').doc(salikId).get();
-    int currentLevel = salikDoc.get('currentLevel');
-    
-    await _firestore.collection('users').doc(salikId).update({
-      'currentLevel': currentLevel + 1,
-      'chillaDay': 1,
-      'chillaStartDate': FieldValue.serverTimestamp(),
-    });
+  // Get assigned salikeen for a murabi
+  Stream<List<Map<String, dynamic>>> getAssignedSalikeen(String murabiId) {
+    return _firestore
+        .collection('users')
+        .where('role', isEqualTo: 'salik')
+        .where('assignedMurabi', isEqualTo: murabiId)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .toList(),
+        );
   }
 
-  Future<void> submitDailyUpdate(
-    String salikId,
-    String levelId,
-    int chillaDay,
-    Map<String, TaskStatus> taskStatuses,
-  ) async {
-    bool allCompleted = taskStatuses.values.every((status) => status.completed);
-
-    await _firestore.collection('dailyUpdates').add({
-      'salikId': salikId,
-      'date': DateTime.now(),
-      'chillaDay': chillaDay,
-      'levelId': levelId,
-      'taskStatuses': taskStatuses.map(
-        (key, value) => MapEntry(key, {
-          'completed': value.completed,
-          'count': value.count,
-        }),
-      ),
-      'submittedAt': FieldValue.serverTimestamp(),
-    });
-
-    if (allCompleted) {
-      int newDay = chillaDay + 1;
-      if (newDay > 40) {
-        await _firestore.collection('users').doc(salikId).update({'chillaDay': 40});
-      } else {
-        await _firestore.collection('users').doc(salikId).update({'chillaDay': newDay});
-      }
-    } else {
-      await _firestore.collection('users').doc(salikId).update({'chillaDay': 0});
+  // Approve level progression
+  Future<void> approveLevelProgression(String salikId, int newLevel) async {
+    try {
+      await _firestore.collection('users').doc(salikId).update({
+        'level': newLevel,
+        'currentDay': 1,
+        'levelStartDate': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error approving level progression: $e');
+      rethrow;
     }
   }
 
-  Future<UserModel?> getUserData(String uid) async {
-    DocumentSnapshot doc = await _firestore.collection('users').doc(uid).get();
-    if (!doc.exists) return null;
-    return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-  }
+  // Get user progress stats
+  Future<Map<String, dynamic>> getUserStats(String uid) async {
+    try {
+      DocumentSnapshot userDoc = await _firestore
+          .collection('users')
+          .doc(uid)
+          .get();
 
-  Future<LevelModel?> getLevelById(String levelId) async {
-    DocumentSnapshot doc = await _firestore.collection('levels').doc(levelId).get();
-    if (!doc.exists) return null;
-    return LevelModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+      if (!userDoc.exists) return {};
+
+      Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+
+      // Get count of daily updates
+      QuerySnapshot updates = await _firestore
+          .collection('dailyUpdates')
+          .where('salikId', isEqualTo: uid)
+          .get();
+
+      return {
+        'name': userData['name'],
+        'level': userData['level'],
+        'currentDay': userData['currentDay'],
+        'totalUpdatesSubmitted': updates.docs.length,
+      };
+    } catch (e) {
+      print('Error getting user stats: $e');
+      return {};
+    }
   }
 }

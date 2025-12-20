@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "426787534832",
+    "project_id": "alburhan-mamulat",
+    "storage_bucket": "alburhan-mamulat.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:426787534832:android:d9a41948fdc74154270f35",
+        "android_client_info": {
+          "package_name": "com.alburhan.mamulat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8QvZg98o_RWpQguknsCmSSzWHuBLBeeM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
