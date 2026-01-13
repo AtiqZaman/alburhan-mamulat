@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AddSalikScreen extends StatefulWidget {
   @override
@@ -12,46 +12,90 @@ class _AddSalikScreenState extends State<AddSalikScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _murabiController = TextEditingController();
+  final _passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirestoreService _firestore = FirestoreService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   bool _isLoading = false;
+  bool _hidePassword = true;
+  String? _selectedMurabiId;
 
   Future<void> _addSalik() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تمام فیلڈز بھریں')),
+      );
+      return;
+    }
+
+    if (_selectedMurabiId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('مربی منتخب کریں')),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
-      // Create user in Firebase Auth
+      // Step 1: Create user in Firebase Auth
+      print('Creating Firebase Auth account...');
       UserCredential userCredential = await _auth
           .createUserWithEmailAndPassword(
             email: _emailController.text.trim(),
-            password: 'Salik@123', // Default password
+            password: _passwordController.text.trim(),
           );
 
-      // Add to Firestore
-      await _firestore.addUser(
-        uid: userCredential.user!.uid,
-        name: _nameController.text,
-        email: _emailController.text,
-        phone: _phoneController.text,
-        role: 'salik',
-        assignedMurabi: _murabiController.text,
-        level: 1,
-        currentDay: 1,
-      );
+      final uid = userCredential.user!.uid;
+      print('Auth account created: $uid');
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('سالک کامیابی سے شامل ہوگیا')));
+      // Step 2: Save directly to Firestore
+      print('Saving to Firestore...');
+      await _firestore.collection('users').doc(uid).set({
+        'uid': uid,
+        'name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'role': 'salik',
+        'assignedMurabiId': _selectedMurabiId,
+        'level': 1,
+        'currentDay': 1,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-      Navigator.pop(context);
+      print('Salik saved successfully with Murabi: $_selectedMurabiId');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('سالک کامیابی سے شامل ہوگیا'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.pop(context);
+      }
+    } on FirebaseAuthException catch (e) {
+      print('Auth Error: ${e.code} - ${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خرابی: ${e.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خرابی: ${e.toString()}')));
+      print('Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خرابی: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
 
     setState(() => _isLoading = false);
@@ -112,17 +156,129 @@ class _AddSalikScreenState extends State<AddSalikScreen> {
                     value?.isEmpty ?? true ? 'فون نمبر درج کریں' : null,
               ),
               SizedBox(height: 16),
+              // Password Field - NEW
               TextFormField(
-                controller: _murabiController,
+                controller: _passwordController,
                 decoration: InputDecoration(
-                  labelText: 'مربی کا نام',
+                  labelText: 'پاس ورڈ',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  prefixIcon: Icon(Icons.group),
+                  prefixIcon: Icon(Icons.lock),
+                  suffixIcon: GestureDetector(
+                    onTap: () {
+                      setState(() => _hidePassword = !_hidePassword);
+                    },
+                    child: Icon(
+                      _hidePassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                  ),
                 ),
-                validator: (value) =>
-                    value?.isEmpty ?? true ? 'مربی کا نام درج کریں' : null,
+                obscureText: _hidePassword,
+                validator: (value) {
+                  if (value?.isEmpty ?? true) {
+                    return 'پاس ورڈ درج کریں';
+                  }
+                  if (value!.length < 6) {
+                    return 'پاس ورڈ کم از کم 6 حروف ہونا چاہیے';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16),
+              // Murabi Dropdown with real-time Firestore
+              StreamBuilder<QuerySnapshot>(
+                stream: _firestore
+                    .collection('users')
+                    .where('role', isEqualTo: 'murabi')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  List<DropdownMenuItem<String>> murabiItems = [];
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return DropdownButtonFormField<String>(
+                      value: _selectedMurabiId,
+                      decoration: InputDecoration(
+                        labelText: 'مربی منتخب کریں',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: Icon(Icons.group),
+                      ),
+                      items: [],
+                      onChanged: null,
+                      hint: Text('لوڈ ہو رہا ہے...'),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    print('Snapshot error: ${snapshot.error}');
+                    return Container(
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'خرابی: ${snapshot.error}',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    );
+                  }
+
+                  if (snapshot.hasData) {
+                    print(
+                        'Snapshot has ${snapshot.data!.docs.length} Murabis');
+                    for (var doc in snapshot.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final name = data['name'] ?? 'نام نہیں';
+                      murabiItems.add(
+                        DropdownMenuItem<String>(
+                          value: doc.id,
+                          child: Text(
+                            name,
+                            style: TextStyle(fontFamily: 'NotoNastaliq'),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+
+                  if (murabiItems.isEmpty) {
+                    return Container(
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange),
+                      ),
+                      child: Text(
+                        'کوئی مربی دستیاب نہیں\nپہلے مربی شامل کریں',
+                        style: TextStyle(
+                          color: Colors.orange.shade800,
+                          fontFamily: 'NotoNastaliq',
+                        ),
+                      ),
+                    );
+                  }
+
+                  return DropdownButtonFormField<String>(
+                    value: _selectedMurabiId,
+                    decoration: InputDecoration(
+                      labelText: 'مربی منتخب کریں',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      prefixIcon: Icon(Icons.group),
+                    ),
+                    items: murabiItems,
+                    onChanged: (value) {
+                      setState(() => _selectedMurabiId = value);
+                    },
+                    validator: (value) =>
+                        value == null ? 'مربی منتخب کریں' : null,
+                  );
+                },
               ),
               SizedBox(height: 32),
               SizedBox(
@@ -156,7 +312,7 @@ class _AddSalikScreenState extends State<AddSalikScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
-    _murabiController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 }

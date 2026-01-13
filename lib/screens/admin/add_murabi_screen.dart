@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/firestore_service.dart';
 
 class AddMurabiScreen extends StatefulWidget {
@@ -12,11 +13,13 @@ class _AddMurabiScreenState extends State<AddMurabiScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _bioController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirestoreService _firestore = FirestoreService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   bool _isLoading = false;
+  bool _hidePassword = true;
 
   Future<void> _addMurabi() async {
     if (!_formKey.currentState!.validate()) return;
@@ -24,32 +27,62 @@ class _AddMurabiScreenState extends State<AddMurabiScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Create user in Firebase Auth
+      // Step 1: Create user in Firebase Auth
+      print('Creating Firebase Auth account...');
       UserCredential userCredential = await _auth
           .createUserWithEmailAndPassword(
             email: _emailController.text.trim(),
-            password: 'Murabi@123', // Default password
+            password: _passwordController.text.trim(),
           );
 
-      // Add to Firestore
-      await _firestore.addUser(
-        uid: userCredential.user!.uid,
-        name: _nameController.text,
-        email: _emailController.text,
-        phone: _phoneController.text,
-        role: 'murabi',
-        bio: _bioController.text,
-      );
+      final uid = userCredential.user!.uid;
+      print('Auth account created: $uid');
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('مربی کامیابی سے شامل ہوگیا')));
+      // Step 2: Save directly to Firestore (bypass FirestoreService to avoid issues)
+      print('Saving to Firestore...');
+      await _firestore.collection('users').doc(uid).set({
+        'uid': uid,
+        'name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'role': 'murabi',
+        'bio': _bioController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-      Navigator.pop(context);
+      print('Murabi saved successfully');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('مربی کامیابی سے شامل ہوگیا'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.pop(context);
+      }
+    } on FirebaseAuthException catch (e) {
+      print('Auth Error: ${e.code} - ${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خرابی: ${e.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('خرابی: ${e.toString()}')));
+      print('Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خرابی: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
 
     setState(() => _isLoading = false);
@@ -110,6 +143,36 @@ class _AddMurabiScreenState extends State<AddMurabiScreen> {
                     value?.isEmpty ?? true ? 'فون نمبر درج کریں' : null,
               ),
               SizedBox(height: 16),
+              // Password Field - NEW
+              TextFormField(
+                controller: _passwordController,
+                decoration: InputDecoration(
+                  labelText: 'پاس ورڈ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  prefixIcon: Icon(Icons.lock),
+                  suffixIcon: GestureDetector(
+                    onTap: () {
+                      setState(() => _hidePassword = !_hidePassword);
+                    },
+                    child: Icon(
+                      _hidePassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                  ),
+                ),
+                obscureText: _hidePassword,
+                validator: (value) {
+                  if (value?.isEmpty ?? true) {
+                    return 'پاس ورڈ درج کریں';
+                  }
+                  if (value!.length < 6) {
+                    return 'پاس ورڈ کم از کم 6 حروف ہونا چاہیے';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16),
               TextFormField(
                 controller: _bioController,
                 decoration: InputDecoration(
@@ -153,6 +216,7 @@ class _AddMurabiScreenState extends State<AddMurabiScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
     _bioController.dispose();
     super.dispose();
   }

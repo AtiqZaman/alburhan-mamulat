@@ -60,21 +60,15 @@ class _SalikDashboardState extends State<SalikDashboard> {
         setState(() => levelData = level);
       }
 
-      // Get tasks for current level - use the level ID from levelData
-      if (level != null && level['id'] != null) {
-        final levelId = level['id'];
-        final tasksSnapshot = firestoreService.getTasksByLevel(levelId);
-        tasksSnapshot.listen((taskList) {
-          if (mounted) {
-            setState(() => tasks = taskList);
-          }
-        });
-      } else {
-        print('Level not found or has no ID');
+      // Get tasks for current level
+      final levelId = currentLevel.toString();
+      final tasksSnapshot = firestoreService.getTasksByLevel(levelId);
+      tasksSnapshot.listen((taskList) {
         if (mounted) {
-          setState(() => tasks = []);
+          setState(() => tasks = taskList);
         }
-      }
+      });
+
       // Get today's submissions
       final submissions = await firestoreService.getTodaySubmissions(
         authService.currentUser!.uid,
@@ -231,7 +225,7 @@ class _SalikDashboardState extends State<SalikDashboard> {
                           ),
                         ),
                         SizedBox(height: 16),
-                        _buildInfoRow('مربی', murabiName),
+                        _buildInfoRow('مرشد', murabiName),
                         SizedBox(height: 12),
                         _buildInfoRow('سطح', levelName),
                         SizedBox(height: 12),
@@ -320,39 +314,6 @@ class _SalikDashboardState extends State<SalikDashboard> {
                     )
                   else
                     ...tasks.map((task) => _buildTaskCard(task)).toList(),
-
-                  SizedBox(height: 24),
-
-                  // Submit Daily Update Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SubmitUpdateScreen(),
-                          ),
-                        );
-                      },
-                      icon: Icon(Icons.check_circle, size: 24),
-                      label: Text(
-                        'آج کا معمول جمع کریں',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'NotoNastaliq',
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF10B981),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
 
                   SizedBox(height: 24),
                 ],
